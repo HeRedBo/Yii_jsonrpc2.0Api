@@ -27,27 +27,26 @@ class RpcError
     protected function buildErrorObject()
     {
         $this->errorObject = new stdClass();
+        $this->_setErrorCode();
+        $this->_setErrorMsg();
+        $this->_setErrorData();
+    }
+
+    private function _setErrorCode()
+    {
         $this->errorObject->code = $this->_code;
+    }
+
+    private function _setErrorMsg()
+    {
         $this->errorObject->message = $this->_message;
-        if(!empty($this->_data) && is_array($this->_data))
-            $this->errorObject-> $this->_data;
     }
 
-
-
-    public function setErrorCode($code)
+    private function _setErrorData()
     {
-        $this->_code = $code;
-    }
-
-    public function setErrorMsg($msg)
-    {
-        $this->_message = $msg;
-    }
-
-    public function setErrorData($data)
-    {
-        $this->_data = $data;
-    }
- 
+        if($this->_data)
+        {
+            $this->errorObject->data = $this->_data;
+        }   
+    } 
 }

@@ -16,7 +16,7 @@ return array(
 	'import'=>array(
 		'application.models.*',
 		'application.components.*',
-		'application.components.rpc.2.0.*',
+		'application.components.rpc2.*',
 		'application.components.util.*',
 	),
 

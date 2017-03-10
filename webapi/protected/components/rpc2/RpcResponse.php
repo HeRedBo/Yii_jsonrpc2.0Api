@@ -20,13 +20,13 @@ class RpcResponse
         $this->_id = $requestId;
     }
 
-    public function getResponseOject()
+    public function getRpcResponseObject()
     {
         $this->_buildResponseOject();
         return $this->responseObject;
     }
 
-    public function buildResponseOject()
+    private function _buildResponseOject()
     {
         $this->responseObject =  new stdClass();
         $this->_setResponseHeader();
@@ -58,8 +58,8 @@ class RpcResponse
         if($this->_requestBody instanceof RpcError)
         {
             $errorObject = $this->_requestBody->getErrorObject();
-            if($errorObject->data)
-                $this->responseObject->body = base64_encode(json_encode($errorObject->data));
+            if(isset($errorObject)&& !empty($errorObject->data))
+                $this->responseObject->data = $errorObject->data;
         }
         else
         {
@@ -75,5 +75,10 @@ class RpcResponse
     private function _setResponseId()
     {
         $this->responseObject->id = $this->_id;
+    }
+
+    public function setResponseObjectId($id = null)
+    {
+        $this->_id = $id;
     }
 }

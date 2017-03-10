@@ -2,7 +2,6 @@
 /**
  * jsonrpc 实现
  */
-
 class CRPCAction extends CAction
 {
     /**
@@ -11,6 +10,7 @@ class CRPCAction extends CAction
      * @var int 
      */
     const PARSE_ERROR    = 32700;
+
     /**
      * 无效请求 发送的json不是一个有效的请求对象。
      * @var int
@@ -43,6 +43,12 @@ class CRPCAction extends CAction
     const SIGN_ERROR = 32604; 
 
     /**
+     * 加密接口秘钥
+     * @var string
+     */
+    const API_KEY = '4b111cc14a33b88e37e2e2934f493458';
+
+    /**
      * 请求的json字符串
      * @var string
      */
@@ -64,10 +70,13 @@ class CRPCAction extends CAction
     {
         try 
         {
-            ApiLog::getInstance('request')->info('请求地址：'.Yii::app()->request->url);
-            $input = json_decode(file_get_contents("php://input")); #获取请求数据
-            $input->body = json_decode(base64_decode($input->body));
-            ApiLog::getInstance('request')->input('请求参数：'.json_encode($input));
+            #ApiLog::getInstance('request')->info('请求地址：'.Yii::app()->request->url);
+            //$input = json_decode(file_get_contents("php://input")); #获取请求数据
+            $inputStr = '{"jsonrpc":2,"time":1489074266,"sign":"8b07c48acfe68983394b843185f4293d","method":"requestTest","id":1,"params":"eyJhZ2UiOjI0LCJzZXgiOiJtYW4iLCJuYW1lIjoieGlhb2JvIn0"}';
+            $this->requestText = $inputStr;
+            $input = json_decode($inputStr);
+            // $input->body = json_decode(base64_decode($input->body));
+            ApiLog::getInstance('request')->info('请求参数：'.json_encode($input));
         } 
         catch (Exception $e) 
         {
@@ -80,7 +89,7 @@ class CRPCAction extends CAction
     public function run()
     {
         if(!$this->requestText)
-            $this->requestText =file_get_contents("php://input");
+            $this->requestText = file_get_contents("php://input");
         $this->processsingRequest();
         Yii::app()->end();
     }
@@ -94,8 +103,6 @@ class CRPCAction extends CAction
         try 
         {
             $this->_parseRequestJson();
-            // TODO
-            // 数据校验 签名校验 时间校验
             $this->_performRequestTask();
         } catch (Exception $e) 
         {
@@ -112,7 +119,7 @@ class CRPCAction extends CAction
     {
         if($this->_isBatchRequestAndNoEmpty())
         {
-            $this->performBatchCall();
+            $this->_performBatchCall();
         }
         else
         {
@@ -161,6 +168,34 @@ class CRPCAction extends CAction
     private function _performSingleCall()
     {
         $responseObject = $this->_getResponseOject($this->requestObject);
+        // var_dump($responseObject);exit;
+        $obj = $responseObject->getRpcResponseObject();
+        if(!$this->_isNotification($this->requestObject))
+        {
+            $this->doResponse($obj);
+        }
+    }
+
+    private function _performBatchCall()
+    {
+        foreach ($this->requestObject as $request) 
+        {
+            $requestObject = $this->_getResponseOject($request);
+            if(!$this->_isNotification($request))
+            {
+                array_push($this->responseBatchArray,$request);
+            }
+        }
+        $this->doResponse($this->responseBatchArray);
+    }
+
+    private function _isNotification($requestObject)
+    {
+        if(is_object($requestObject) && is_null($requestObject->id))
+        {
+            return true;
+        }
+        return false;
     }
 
     private function _getResponseOject($requestObject)
@@ -168,13 +203,16 @@ class CRPCAction extends CAction
         try 
         {
             $this->_validateRequest($requestObject);
-            $requestObject->head->method = 'action'.ucfirst($requestObject->head->method);
+            $requestObject->method = 'action'.ucfirst($requestObject->method);
             $methodOwnerService = $this->_isMethodAvailable($requestObject);
+            $responseObject = $this->_buildResponseOject($requestObject,$methodOwnerService);
         } 
         catch (Exception $e) 
         {
-            
+            $responseObject = $this->_buildResponseOject($e);
+            $responseObject->setResponseObjectId($requestObject->id);
         }
+        return $responseObject;
     }
 
     private function _validateRequest($request)
@@ -206,20 +244,91 @@ class CRPCAction extends CAction
      */
     private  function _checkSign($requestObject)
     {
-        // TODO
         return true;
+        if($requestObject->sign == $this->_makeSign($requestObject))
+            return true;
+        return false;
+    }
+
+    private function _makeSign($requestObject)
+    {
+        $buff = "";
+        foreach ($requestObject as $k => $v)
+        {
+            if($k != "sign" && $v != "" && !is_array($v)){
+                $buff .= $k . "=" . $v . "&";
+            }
+        }
+        $buff = trim($buff, "&");
+        return strtoupper(md5($buff . self::API_KEY)); 
     }
 
     private function _isMethodAvailable($requestObject)
     {
+        if(array_key_exists($requestObject->method, $this->_getCallableMethodNames($this->getController())))
+        {
+            return $this->getController();
+        }
+        throw new Exception("Method not found", self::Method_NOT_FOUND);
+    }
 
+    private function _getCallableMethodNames($controller)
+    {
+        $methodNames = [];
+        $reflection = new ReflectionClass($controller);
+        $methods = $reflection->getMethods();
+        foreach ($methods as $method) 
+        {
+            $methodNames[$method->name] = $method->getParameters();// 参数对象数组
+        }
+        return $methodNames;
+    }
+
+    private function _buildResponseOject($requestOrExceptionObject,$service = null)
+    {
+        if(is_null($service))
+        {
+            $responseBody   = new RpcError($requestOrExceptionObject->getCode(), $requestOrExceptionObject->getMessage());
+            $responseObject = new RpcResponse($responseBody);
+        }
+        else
+        {
+            $callbackResult = $this->_call($service,$requestOrExceptionObject);
+            $responseObject = new RpcResponse($callbackResult,$requestOrExceptionObject->head->id);
+        }
+        return $responseObject;
+    }
+
+    private function _call($methodService, $requestObject)
+    {
+        try 
+        {
+            $method = new ReflectionMethod ($methodService,$requestObject->head->method);
+            $params =  (array) $this->_getRPCPartners($requestObject);
+            return $method->invokeArgs($methodService,$params);
+        } 
+        catch (Exception $e) 
+        {
+            ApiLog::getInstance('exception')->error($e->__toString());
+            throw new Exception("Invalid Params", self::INVALID_PARAMS);
+        }
+    }
+
+    private function _getRPCPartners($requestObject)
+    {
+        $body = [];
+        if(isset($requestObject->body))
+        {
+            $body = base64_decode($requestObject->body);
+        }
+        return $body;
     }
 
     private function doResponse($responseObj)
     {
         if(!empty($responseObj))
         {
-            ApiLog::getInstance('response')->info('返回结果：'.Tool::jsonEncodeFormat($responseObj));
+            ApiLog::getInstance('response')->info('返回结果：'.json_encode($responseObj));
             header('Content-type: application/json');
             echo json_encode($responseObj);
         }

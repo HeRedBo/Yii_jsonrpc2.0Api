@@ -1,11 +1,10 @@
 <?php
-Yii::import('application.components.rpc.2.0.CRPCAction'); 
+Yii::import('application.components.rpc2.CRPCAction'); 
 class CRPCController extends Controller
 {
     protected $head;
-    // { "head" : {"jsonrpc":"2.0", "time": "1462954705", "sign":8b07c48acfe68983394b843185f4293d", "method": "subtract","params":"", "id": 1}}
-    // params = base64_encode(array(['name' => 12,age=23,password => 23]))
-    
+    //'{"head":{"jsonrpc":2,"time":1489071213,"sign":"8b07c48acfe68983394b843185f4293d","method":"requestTest","id":1},"body":"eyJhZ2UiOjI0LCJzZXgiOiJtYW4iLCJuYW1lIjoieGlhb2JvIn0"}';
+
     public function accessRules()
     {
         return [];
@@ -14,7 +13,7 @@ class CRPCController extends Controller
     public function actions()
     {
         return [
-            'index' => ['class' => 'CPRCAction'], // 使用actionIndex实现调整
+            'index' => ['class' => 'CRPCAction'], // 使用actionIndex实现调整
         ];
     }
 
